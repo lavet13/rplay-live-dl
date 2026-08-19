@@ -259,7 +259,7 @@ class RPlayAPI:
 
         url = (
             f"{self.base_url}/live/key2?"
-            f"lang=en&requestorOid={self.user_oid}&loginType=plax"
+            f"lang=en&requestorOid={self.user_oid}&loginType=rplay"
         )
 
         try:
