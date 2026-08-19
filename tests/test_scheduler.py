@@ -15,7 +15,7 @@ from models.env import EnvConfig
 @pytest.fixture
 def mock_env():
     """Create mock EnvConfig."""
-    return EnvConfig(auth_token="test_token", user_oid="test_oid", interval=60)
+    return EnvConfig(auth_token="test_token", refresh_token="test_refresh", user_oid="test_oid", interval=60)
 
 
 @pytest.fixture
@@ -57,6 +57,7 @@ class TestLiveStreamSchedulerInit:
         mock_monitor_class.assert_called_once_with(
             "test_token",
             "test_oid",
+            refresh_token="test_refresh",
             min_free_disk_gb=5.0,
         )
         assert scheduler.monitor is mock_monitor_class.return_value

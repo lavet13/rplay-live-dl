@@ -66,6 +66,7 @@ class LiveStreamScheduler:
         self.monitor = LiveStreamMonitor(
             self.env.auth_token,
             self.env.user_oid,
+            refresh_token=self.env.refresh_token,
             min_free_disk_gb=self.env.min_free_disk_gb,
         )
         self.scheduler = BlockingScheduler()

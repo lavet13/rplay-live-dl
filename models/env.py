@@ -47,6 +47,10 @@ class EnvConfig(BaseSettings):
         description="User's unique identifier (OID)",
         min_length=1,
     )
+    refresh_token: str = Field(
+        default="",
+        description="Refresh token used to mint fresh access tokens (enables auto-refresh)",
+    )
     interval: int = Field(
         default=DEFAULT_INTERVAL,
         description="Check interval in seconds",
@@ -100,6 +104,11 @@ class EnvConfig(BaseSettings):
         """Validate that auth token is not just whitespace."""
         if not v.strip():
             raise ValueError("AUTH_TOKEN cannot be empty or whitespace")
+        return v.strip()
+
+    @field_validator("refresh_token")
+    @classmethod
+    def validate_refresh_token(cls, v: str) -> str:
         return v.strip()
 
     @field_validator("user_oid")

@@ -11,3 +11,4 @@ logs/
 .worktrees/
 poetry.toml
 pyrightconfig.json
+docker-compose.override.yaml

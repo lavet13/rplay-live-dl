@@ -52,10 +52,10 @@
 
 `2.0.0-vibe` contains a breaking config-path change.
 
-| Before v2 | Since `2.0.0-vibe` |
-| --- | --- |
-| `./config.yaml` | `./config/config.yaml` |
-| mount one file | mount the whole `./config` directory |
+| Before v2       | Since `2.0.0-vibe`                   |
+| --------------- | ------------------------------------ |
+| `./config.yaml` | `./config/config.yaml`               |
+| mount one file  | mount the whole `./config` directory |
 
 Upgrade checklist:
 
@@ -76,6 +76,7 @@ Startup protection:
 ## ✨ Features
 
 - automated live monitoring for multiple creators
+- automatic access-token refresh for long-running deployments (short-lived tokens are re-minted from `REFRESH_TOKEN`)
 - session-aware download tracking to avoid creator-level blocking
 - flat archive layout with timestamp-prefixed `.ts` files per session
 - immediate merge queueing after raw download completion
@@ -136,14 +137,38 @@ Development:
 
 ### Obtaining Credentials
 
+RPlay persists its Vuex store to `localStorage` under the `vuex` key. Parsing it exposes an `AccountModule.userInfo` object that holds every token credential this tool needs — `token` (your `AUTH_TOKEN`), `refreshToken` (your `REFRESH_TOKEN`), and `loginType`. You can read all of them from one place in the browser console:
+
+```js
+JSON.parse(localStorage.vuex).AccountModule.userInfo
+```
+
 #### `AUTH_TOKEN`
 
+The short-lived access token. It expires roughly 10 minutes after it is issued, so on its own it is only enough to start the app once — set `REFRESH_TOKEN` (below) so the app can keep minting fresh access tokens automatically.
+
 1. Log in to `rplay.live`
-2. Open browser DevTools (`F12`)
-3. Execute `localStorage.getItem('_AUTHORIZATION_')`
+2. Open browser DevTools (`F12`) → Console
+3. Execute either of:
+   - `localStorage.getItem('_AUTHORIZATION_')`
+   - `JSON.parse(localStorage.vuex).AccountModule.userInfo.token`
 4. Copy the returned token
 
 ![auth_token](https://github.com/Zhen-Bo/rplay-live-dl/blob/main/images/auth_token.png?raw=true)
+
+#### `REFRESH_TOKEN` (recommended)
+
+The durable token used to mint fresh access tokens. Because `AUTH_TOKEN` expires in ~10 minutes, a deployment without `REFRESH_TOKEN` will fail authentication shortly after starting (the container logs `Invalid authentication response` and restart-loops). With `REFRESH_TOKEN` set, the app refreshes the access token before it expires and runs indefinitely.
+
+1. Log in to `rplay.live`
+2. Open browser DevTools (`F12`) → Console
+3. Execute:
+   ```js
+   JSON.parse(localStorage.vuex).AccountModule.userInfo.refreshToken
+   ```
+4. Copy the returned value
+
+> Unlike `AUTH_TOKEN`, the refresh token is stable — the same value keeps working, so you paste it once into `.env` and leave it.
 
 #### `USER_OID`
 
@@ -174,6 +199,13 @@ Full example:
 AUTH_TOKEN=your_auth_token
 USER_OID=your_user_oid
 
+# Recommended: refresh token used to auto-mint fresh access tokens.
+# AUTH_TOKEN expires ~10 minutes after you copy it; without this the
+# container fails authentication shortly after starting. Get it from the
+# browser console at rplay.live:
+#   JSON.parse(localStorage.vuex).AccountModule.userInfo.refreshToken
+REFRESH_TOKEN=
+
 # Optional: monitor poll interval in seconds (10-3600)
 INTERVAL=60
 
@@ -198,23 +230,26 @@ APP_GIT_SHA=
 
 Environment variables:
 
-| Variable | Required | Default | Validation / accepted values | Purpose |
-| --- | --- | --- | --- | --- |
-| `AUTH_TOKEN` | yes | none | non-empty | RPlay auth token used for API and stream access |
-| `USER_OID` | yes | none | non-empty | Your RPlay user identifier |
-| `INTERVAL` | no | `60` | integer `10`-`3600` | Poll interval in seconds |
-| `MIN_FREE_DISK_GB` | no | `5` | non-negative number; `0` disables the guard; invalid/negative values abort startup | Skip starting a new recording when free space on the output volume is below this many GiB |
-| `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; invalid values abort startup with a non-zero exit | Console and file log verbosity |
-| `LOG_YTDLP_INTERNAL` | no | `false` | truthy: `1`, `true`, `yes`, `on`; falsy: `0`, `false`, `no`, `off`, empty; other values abort startup | Enables noisy yt-dlp internal debug lines |
-| `LOG_MAX_SIZE_MB` | no | `5` | integer `1`-`100` | Maximum size of each log file before rotation |
-| `LOG_BACKUP_COUNT` | no | `5` | integer `1`-`50` | Number of rotated log files to keep |
-| `LOG_RETENTION_DAYS` | no | `30` | integer `1`-`365` | Age-based cleanup window for old logs |
-| `APP_GIT_SHA` | no | empty | free-form string | Startup version metadata shown in logs; usually injected by Docker/image builds |
+| Variable             | Required | Default | Validation / accepted values                                                                          | Purpose                                                                                                                        |
+| -------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `AUTH_TOKEN`         | yes      | none    | non-empty                                                                                             | RPlay access token used for API and stream access; short-lived (~10 min), refreshed automatically when `REFRESH_TOKEN` is set  |
+| `USER_OID`           | yes      | none    | non-empty                                                                                             | Your RPlay user identifier                                                                                                     |
+| `REFRESH_TOKEN`      | no       | empty   | surrounding whitespace trimmed; empty disables auto-refresh                                            | Durable token used to mint fresh access tokens; without it `AUTH_TOKEN` is used as-is and expires in ~10 min                   |
+| `INTERVAL`           | no       | `60`    | integer `10`-`3600`                                                                                   | Poll interval in seconds                                                                                                       |
+| `MIN_FREE_DISK_GB`   | no       | `5`     | non-negative number; `0` disables the guard; invalid/negative values abort startup                    | Skip starting a new recording when free space on the output volume is below this many GiB                                      |
+| `LOG_LEVEL`          | no       | `INFO`  | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; invalid values abort startup with a non-zero exit    | Console and file log verbosity                                                                                                 |
+| `LOG_YTDLP_INTERNAL` | no       | `false` | truthy: `1`, `true`, `yes`, `on`; falsy: `0`, `false`, `no`, `off`, empty; other values abort startup | Enables noisy yt-dlp internal debug lines                                                                                      |
+| `LOG_MAX_SIZE_MB`    | no       | `5`     | integer `1`-`100`                                                                                     | Maximum size of each log file before rotation                                                                                  |
+| `LOG_BACKUP_COUNT`   | no       | `5`     | integer `1`-`50`                                                                                      | Number of rotated log files to keep                                                                                            |
+| `LOG_RETENTION_DAYS` | no       | `30`    | integer `1`-`365`                                                                                     | Age-based cleanup window for old logs                                                                                          |
+| `APP_GIT_SHA`        | no       | empty   | free-form string                                                                                      | Startup version metadata shown in logs; usually injected by Docker/image builds                                               |
 
 Notes:
 
 - local runs load from `.env` or process environment variables
 - the bundled Docker Compose file loads `.env` through `env_file`, so its values become real container environment variables
+- `AUTH_TOKEN` is short-lived (~10 minutes). Set `REFRESH_TOKEN` so the app can mint fresh access tokens automatically before each poll; without it, recording stops once `AUTH_TOKEN` expires
+- `REFRESH_TOKEN` is stable — the refresh call returns a new access token but no new refresh token, so the same value keeps working
 - `LOG_YTDLP_INTERNAL=true` is only for deep diagnosis; it is intentionally noisy
 
 #### Creator configuration
@@ -226,20 +261,20 @@ Copy `config.yaml.example` to `config/config.yaml` and edit it like this:
 apiBaseUrl: https://api.rplay.live
 
 creators:
-    - name: "Creator Nickname 1"
-      id: "Creator OID 1"
-    - name: "Creator Nickname 2"
-      id: "Creator OID 2"
+  - name: "Creator Nickname 1"
+    id: "Creator OID 1"
+  - name: "Creator Nickname 2"
+    id: "Creator OID 2"
 ```
 
 Configuration keys:
 
-| Key | Required | Default | Validation | Purpose |
-| --- | --- | --- | --- | --- |
-| `apiBaseUrl` | no | `https://api.rplay.live` | absolute URL; surrounding whitespace is trimmed and trailing `/` is removed | Base URL for the RPlay API |
-| `creators` | no | empty list | YAML list | Creators to monitor |
-| `creators[].name` | yes | none | non-empty, max `100` characters | Display name used in logs, folder names, and final filenames |
-| `creators[].id` | yes | none | non-empty | Creator OID from the RPlay profile/network requests |
+| Key               | Required | Default                  | Validation                                                                  | Purpose                                                      |
+| ----------------- | -------- | ------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `apiBaseUrl`      | no       | `https://api.rplay.live` | absolute URL; surrounding whitespace is trimmed and trailing `/` is removed | Base URL for the RPlay API                                   |
+| `creators`        | no       | empty list               | YAML list                                                                   | Creators to monitor                                          |
+| `creators[].name` | yes      | none                     | non-empty, max `100` characters                                             | Display name used in logs, folder names, and final filenames |
+| `creators[].id`   | yes      | none                     | non-empty                                                                   | Creator OID from the RPlay profile/network requests          |
 
 Notes:
 
@@ -255,6 +290,7 @@ The v2 runtime uses a session-aware download pipeline.
 1. **Poll**
    - the monitor loads `config/config.yaml`
    - it refreshes `apiBaseUrl` from config before calling the API
+   - when `REFRESH_TOKEN` is set, it refreshes the access token if it is missing or within 60 seconds of expiry; otherwise it uses `AUTH_TOKEN` as-is
    - it checks live status for all configured creators
 
 2. **Create a session**
@@ -342,7 +378,7 @@ docker run -d \
 
 #### Docker healthcheck
 
-The image runs `python -m core.health` every 60s (`--retries=3`). Healthy when `/tmp/rplay-live-dl-heartbeat` exists and its mtime is strictly fresher than `3 × INTERVAL` seconds (touched once per monitor poll cycle, including failed ones). Docker only *displays* unhealthy status; it does not restart the container. With default `INTERVAL=60`, probes start failing after 180s without a heartbeat update, and Docker marks the container unhealthy ~300–360s after the last heartbeat update.
+The image runs `python -m core.health` every 60s (`--retries=3`). Healthy when `/tmp/rplay-live-dl-heartbeat` exists and its mtime is strictly fresher than `3 × INTERVAL` seconds (touched once per monitor poll cycle, including failed ones). Docker only _displays_ unhealthy status; it does not restart the container. With default `INTERVAL=60`, probes start failing after 180s without a heartbeat update, and Docker marks the container unhealthy ~300–360s after the last heartbeat update.
 
 ### Directory Structure
 
@@ -393,12 +429,29 @@ Fix:
 Check:
 
 - `AUTH_TOKEN` is still valid
+- `REFRESH_TOKEN` is set and valid (`AUTH_TOKEN` alone expires in ~10 minutes, so without a refresh token recording stops shortly after startup)
 - `USER_OID` is correct
 - creator ID is correct
 - there is enough free disk space
 - logs do not show API or connection failures
 
-#### 3. Stream access fails (`401` / `403` / `404`)
+#### 3. Authentication fails at startup (`Invalid authentication response`)
+
+Behavior:
+
+- the app logs `Authentication failed: Invalid authentication response` and exits, then restarts
+
+Cause:
+
+- the access token was already expired by the time the container started, and no valid `REFRESH_TOKEN` is available to mint a fresh one
+
+Check:
+
+- set `REFRESH_TOKEN` in `.env` (see [Obtaining Credentials](#obtaining-credentials)); this is the usual fix
+- if `REFRESH_TOKEN` is set and it still fails, the refresh token itself may be stale — grab a fresh value from `JSON.parse(localStorage.vuex).AccountModule.userInfo.refreshToken`
+- confirm `USER_OID` matches your `User Number` at `https://rplay.live/myinfo/`
+
+#### 4. Stream access fails (`401` / `403` / `404`)
 
 Behavior:
 
@@ -415,7 +468,7 @@ Check:
 - if repeated `403` persists, confirm the stream is not paid/private for your account
 - if repeated `404` persists after the automatic retries, wait a few seconds and confirm the stream actually remained live
 
-#### 4. Merge failed
+#### 5. Merge failed
 
 Behavior:
 
@@ -429,7 +482,7 @@ Check:
 - available disk space
 - the preserved raw `.ts` files in `archive/<creator>/` for manual recovery
 
-#### 5. Shutdown takes time
+#### 6. Shutdown takes time
 
 Behavior:
 

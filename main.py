@@ -51,11 +51,15 @@ def _warn_about_orphaned_downloads(logger: logging.Logger) -> None:
     # *.part* covers .part, .part-FragN and .part-FragN.part in one pattern,
     # so the three patterns are disjoint and need no dedup.
     patterns = ("[0-9]*_*.ts", "*.part*", "*.ytdl")
-    orphans = sorted(path for pattern in patterns for path in archive.glob(f"*/{pattern}"))
+    orphans = sorted(
+        path for pattern in patterns for path in archive.glob(f"*/{pattern}")
+    )
     if not orphans:
         return
 
-    logger.warning(f"Found {len(orphans)} file(s) left behind by interrupted recordings:")
+    logger.warning(
+        f"Found {len(orphans)} file(s) left behind by interrupted recordings:"
+    )
     for path in orphans[:10]:
         logger.warning(f"  {path.relative_to(archive)}")
     if len(orphans) > 10:
@@ -109,12 +113,16 @@ def main() -> None:
     except ConfigError as exc:
         # ponytail: scheduler owns hard config failures; probe with default URL.
         logger.warning(
-            f"Could not load config for credential check "
-            f"(using default API URL): {exc}"
+            f"Could not load config for credential check (using default API URL): {exc}"
         )
         api_base_url = DEFAULT_RPLAY_API_BASE_URL
 
-    api = RPlayAPI(env.auth_token, env.user_oid, base_url=api_base_url)
+    api = RPlayAPI(
+        env.auth_token,
+        env.user_oid,
+        refresh_token=env.refresh_token,
+        base_url=api_base_url,
+    )
     try:
         api.validate_credentials()
         logger.info("API credentials validated successfully")

@@ -116,6 +116,7 @@ class LiveStreamMonitor:
         self,
         auth_token: str,
         user_oid: str,
+        refresh_token: Optional[str] = None,
         config_path: str = DEFAULT_CONFIG_PATH,
         api: Optional[RPlayAPI] = None,
         merge_timeout_seconds: int = DEFAULT_MERGE_TIMEOUT_SECONDS,
@@ -132,7 +133,7 @@ class LiveStreamMonitor:
             merge_timeout_seconds: Timeout for ffmpeg merge commands
             min_free_disk_gb: Minimum free disk space in GiB before recording; 0 disables
         """
-        self.api = api if api is not None else RPlayAPI(auth_token, user_oid)
+        self.api = api if api is not None else RPlayAPI(auth_token, user_oid, refresh_token=refresh_token)
         self.config_path = config_path
         self.merge_timeout_seconds = merge_timeout_seconds
         self.min_free_disk_gb = min_free_disk_gb
